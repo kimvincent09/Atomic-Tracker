@@ -12,7 +12,8 @@ export const getHabitAdvice = async (
   
   const habitsSummary = habits.map(h => {
     const count = completions.filter(c => c.habitId === h.id).length;
-    return `- ${h.name} (${h.frequency}): ${count} total completions`;
+    // Fix: Using 'period' property instead of non-existent 'frequency'
+    return `- ${h.name} (${h.period}): ${count} total completions`;
   }).join('\n');
 
   const systemInstruction = `

@@ -4,98 +4,131 @@ import {
   getFirestore, 
   collection, 
   addDoc, 
-  getDocs, 
   deleteDoc, 
   doc, 
   query, 
   where,
-  updateDoc
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  getDocs
 } from "firebase/firestore";
 import { 
   getAuth, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
   onAuthStateChanged,
-  User as FirebaseUser
+  type User as FirebaseUser
 } from "firebase/auth";
 import { Habit, Completion } from "../types";
 
-// IMPORTANT: Replace with your actual Firebase project config from the Firebase Console
 const firebaseConfig = {
-  apiKey: "AIzaSy_demo_key",
-  authDomain: "atomic-habits-demo.firebaseapp.com",
-  projectId: "atomic-habits-demo",
-  storageBucket: "atomic-habits-demo.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+export const isFirebaseConfigured = () => {
+  return firebaseConfig.apiKey === import.meta.env.VITE_FIREBASE_API_KEY
+};
 
-export { auth };
+const app = isFirebaseConfigured() ? initializeApp(firebaseConfig) : null;
+const db = app ? getFirestore(app) : null;
+const auth = app ? getAuth(app) : null;
+
+export { auth, db };
 
 export const dbService = {
-  // --- Auth Helper ---
   onAuthChange(callback: (user: FirebaseUser | null) => void) {
+    if (!auth) {
+      console.warn("Auth not initialized: Keys missing in services/db.ts");
+      callback(null);
+      return () => {};
+    }
     return onAuthStateChanged(auth, callback);
   },
 
-  // --- Habits ---
-  async getHabits(userId: string): Promise<Habit[]> {
+  async createProfile(userId: string, email: string) {
+    if (!db) return;
     try {
-      const q = query(collection(db, "habits"), where("userId", "==", userId));
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+      await setDoc(doc(db, "profiles", userId), {
+        email,
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.error("Profile sync failed:", e);
+    }
+  },
+
+  subscribeToHabits(userId: string, onUpdate: (habits: Habit[]) => void) {
+    if (!db) return () => {};
+    const q = query(collection(db, "habits"), where("userId", "==", userId));
+    return onSnapshot(q, (snapshot) => {
+      const habits = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Habit[];
-    } catch (e) {
-      console.warn("Firestore error", e);
-      return [];
-    }
+      onUpdate(habits);
+    }, (error) => {
+      console.error("Habit subscription error:", error);
+    });
   },
 
-  async addHabit(userId: string, habit: Omit<Habit, 'id'>): Promise<string> {
-    const docRef = await addDoc(collection(db, "habits"), { ...habit, userId });
-    return docRef.id;
-  },
-
-  async deleteHabit(habitId: string): Promise<void> {
-    await deleteDoc(doc(db, "habits", habitId));
-    const q = query(collection(db, "completions"), where("habitId", "==", habitId));
-    const snapshot = await getDocs(q);
-    snapshot.forEach(async (d) => await deleteDoc(doc(db, "completions", d.id)));
-  },
-
-  // --- Completions ---
-  async getCompletions(userId: string): Promise<Completion[]> {
-    try {
-      const q = query(collection(db, "completions"), where("userId", "==", userId));
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+  subscribeToCompletions(userId: string, onUpdate: (completions: Completion[]) => void) {
+    if (!db) return () => {};
+    const q = query(collection(db, "completions"), where("userId", "==", userId));
+    return onSnapshot(q, (snapshot) => {
+      const completions = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Completion[];
-    } catch (e) {
-      return [];
-    }
+      onUpdate(completions);
+    }, (error) => {
+      console.error("Completions subscription error:", error);
+    });
+  },
+
+  async addHabit(userId: string, habit: Omit<Habit, 'id'>): Promise<string> {
+    if (!db) throw new Error("Backend not connected. Check your keys in services/db.ts");
+    const docRef = await addDoc(collection(db, "habits"), { 
+      ...habit, 
+      userId,
+      updatedAt: new Date().toISOString() 
+    });
+    return docRef.id;
+  },
+
+  async updateHabit(habitId: string, habit: Partial<Habit>): Promise<void> {
+    if (!db) throw new Error("Backend not connected.");
+    const habitRef = doc(db, "habits", habitId);
+    await updateDoc(habitRef, {
+      ...habit,
+      updatedAt: new Date().toISOString()
+    });
+  },
+
+  async deleteHabit(habitId: string): Promise<void> {
+    if (!db) return;
+    await deleteDoc(doc(db, "habits", habitId));
   },
 
   async addCompletion(userId: string, completion: Omit<Completion, 'id'>): Promise<string> {
+    if (!db) throw new Error("Backend not connected.");
     const docRef = await addDoc(collection(db, "completions"), { ...completion, userId });
     return docRef.id;
   },
 
   async removeCompletion(habitId: string, date: string): Promise<void> {
+    if (!db) return;
     const q = query(
       collection(db, "completions"), 
       where("habitId", "==", habitId), 
       where("date", "==", date)
     );
     const snapshot = await getDocs(q);
-    snapshot.forEach(async (d) => await deleteDoc(doc(db, "completions", d.id)));
+    const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, "completions", d.id)));
+    await Promise.all(deletePromises);
   }
 };

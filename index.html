@@ -30,6 +30,20 @@
             background: radial-gradient(circle at top right, rgba(79, 70, 229, 0.1), transparent),
                         radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.05), transparent);
         }
+        @keyframes scale-in {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .scale-in {
+            animation: scale-in 0.2s ease-out forwards;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 <script type="importmap">
 {
@@ -40,9 +54,10 @@
     "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "date-fns": "https://esm.sh/date-fns@^4.1.0",
-    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+    "canvas-confetti": "https://esm.sh/canvas-confetti@^1.9.3",
+    "firebase/app": "https://esm.sh/firebase@10.8.0/app",
+    "firebase/firestore": "https://esm.sh/firebase@10.8.0/firestore",
+    "firebase/auth": "https://esm.sh/firebase@10.8.0/auth",
     "firebase/": "https://esm.sh/firebase@^12.8.0/"
   }
 }
